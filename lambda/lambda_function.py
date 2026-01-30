@@ -8,26 +8,28 @@ s3 = boto3.client('s3')
 
 def lambda_handler(event, context):
     try:
-        print("START: Lambda triggered by S3 event")
+        # 1. Get bucket and key from S3 event
+        source_bucket = event['Records'][0]['s3']['bucket']['name']
+        key = event['Records'][0]['s3']['object']['key']
         
-        # 1. Extract bucket and key from event
-        record = event['Records'][0]
-        source_bucket = record['s3']['bucket']['name']
-        key = record['s3']['object']['key']
+        print(f"Processing: {key} from {source_bucket}")
         
-        print(f"Source: s3://{source_bucket}/{key}")
-        
-        # 2. Download image from S3
-        print("Downloading image...")
+        # 2. Download image
         response = s3.get_object(Bucket=source_bucket, Key=key)
-        image_bytes = response['Body'].read()
+        image_data = response['Body'].read()
         
-        # 3. Create thumbnail (200x200)
-        print("Resizing to 200x200 thumbnail...")
-        image = Image.open(io.BytesIO(image_bytes))
+        # 3. Create thumbnail
+        image = Image.open(io.BytesIO(image_data))
         
-        # Ensure RGB mode for JPEG
-        if image.mode != 'RGB':
+        # Convert RGBA to RGB if needed for JPEG compatibility
+        if image.mode in ('RGBA', 'LA', 'P'):
+            # Create a white background and paste the image
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            if image.mode == 'P':
+                image = image.convert('RGBA')
+            background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+            image = background
+        elif image.mode != 'RGB':
             image = image.convert('RGB')
         
         image.thumbnail((200, 200))
@@ -39,24 +41,26 @@ def lambda_handler(event, context):
         
         # 4. Upload to processed bucket
         processed_bucket = os.environ['PROCESSED_BUCKET']
-        thumbnail_key = f"thumb_{key}"
+        # Create new key: keep folder structure, append '_thumbnail' before extension
+        name, ext = os.path.splitext(key)
+        thumb_key = f"{name}_thumbnail.jpg"
         
-        print(f"Uploading to: s3://{processed_bucket}/{thumbnail_key}")
         s3.put_object(
             Bucket=processed_bucket,
-            Key=thumbnail_key,
+            Key=thumb_key,
             Body=buffer,
             ContentType='image/jpeg'
         )
         
-        print("SUCCESS: Thumbnail created and uploaded!")
+        print(f"Uploaded thumbnail to: {processed_bucket}/{thumb_key}")
+        
         return {
             'statusCode': 200,
             'body': json.dumps(f'Processed {key} successfully')
         }
         
     except Exception as e:
-        print(f"ERROR: {str(e)}")
+        print(f"Error: {str(e)}")
         return {
             'statusCode': 500,
             'body': json.dumps(f'Error: {str(e)}')
