@@ -67,6 +67,9 @@ Functional Test
 
 ![Functional Test](screenshots/functional-test.png)
 
+ architecture-diagram.png
+ <img width="845" height="717" alt="architecture-diagram" src="https://github.com/user-attachments/assets/168b26ce-df48-4db1-9e46-a2fadae27653" />
+
 Project Structure
 
 image-processing-pipeline/
